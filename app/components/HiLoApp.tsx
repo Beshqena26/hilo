@@ -418,8 +418,8 @@ export default function HiLoApp() {
             </button>
 
             <div className="streak-box">
-              <span className="stat-label">Streak</span>
-              <span className="stat-val">{streak.length > 0 ? streak.length - 1 : 0}</span>
+              <span className="stat-label">Multiplier</span>
+              <span className="stat-val accent">{totalMultiplier > 1 ? `${totalMultiplier.toFixed(2)}x` : '0x'}</span>
             </div>
           </div>
         </div>
