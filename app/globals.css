@@ -332,6 +332,7 @@ body { display: flex; align-items: center; justify-content: center; }
   background: var(--card-bg); border: 1px solid var(--hairline); border-radius: 8px;
   color: var(--text-mid); font-family: inherit; font-size: 12px; font-weight: 600;
   padding: 8px 20px; cursor: pointer; transition: all 0.15s;
+  white-space: nowrap;
 }
 .skip-btn-text:hover:not(:disabled) { background: var(--elevated); color: var(--text); border-color: var(--toggle-border); }
 .skip-btn-text:disabled { cursor: not-allowed; }
@@ -631,20 +632,20 @@ body { display: flex; align-items: center; justify-content: center; }
   .fairplay { font-size: 0; padding: 6px 8px; gap: 0; }
   .fairplay::before { width: 12px; height: 14px; }
   .info { width: 26px; height: 26px; font-size: 10px; }
-  .history-bar { height: 60px; padding: 6px 8px; }
-  .trail-chip { padding: 4px 8px; font-size: 12px; }
-  .tc-suit, .tc-rank { font-size: 12px; }
-  .trail-tag { font-size: 9px; padding: 2px 8px; }
-  .trail-group { height: 48px; }
+  .history-bar { height: 70px; padding: 6px 8px; }
+  .trail-chip { padding: 6px 10px; font-size: 14px; }
+  .tc-suit, .tc-rank { font-size: 14px; }
+  .trail-tag { font-size: 10px; padding: 3px 8px; }
+  .trail-group { height: 54px; }
   .trail-arrow { padding: 0 3px; }
   .board { gap: 6px; padding: 0 8px; }
   .side-option { flex: 0 0 85px; width: 85px; }
   .center-col { flex: 0 0 120px; width: 120px; }
-  .option-card { width: 85px; height: 110px; }
+  .option-card { width: 85px; height: 110px; font-size: 32px; }
   .opt-label { font-size: 10px; letter-spacing: 0.5px; }
   .opt-sub { font-size: 9px; }
   .opt-mult { font-size: 11px; padding: 3px 6px; }
-  .opt-icon svg { width: 16px; height: 16px; }
+  .opt-icon svg { width: 32px; height: 32px; }
   .opt-desc { font-size: 8px; max-width: 85px; }
   .deck-wrap { width: 108px; height: 178px; }
   .card-frame { width: 108px; height: 152px; }
@@ -681,7 +682,7 @@ body { display: flex; align-items: center; justify-content: center; }
   .opt-label { font-size: 9px; }
   .opt-sub { display: none; }
   .opt-mult { font-size: 10px; padding: 2px 4px; }
-  .opt-icon svg { width: 14px; height: 14px; }
+  .opt-icon svg { width: 32px; height: 32px; }
   .opt-desc { display: none; }
   .deck-wrap { width: 92px; height: 155px; }
   .card-frame { width: 92px; height: 130px; }
@@ -695,11 +696,11 @@ body { display: flex; align-items: center; justify-content: center; }
   .deck-edge:nth-child(5) { width: 68px; }
   .skip-btn-icon { width: 24px; height: 24px; top: -8px; right: -8px; }
   .skip-btn-icon svg { width: 10px; height: 10px; }
-  .history-bar { height: 54px; padding: 4px 6px; }
-  .trail-chip { padding: 3px 6px; font-size: 11px; }
-  .tc-suit, .tc-rank { font-size: 11px; }
-  .trail-tag { font-size: 8px; padding: 2px 6px; }
-  .trail-group { height: 44px; }
+  .history-bar { height: 60px; padding: 4px 6px; }
+  .trail-chip { padding: 5px 8px; font-size: 13px; }
+  .tc-suit, .tc-rank { font-size: 13px; }
+  .trail-tag { font-size: 9px; padding: 2px 6px; }
+  .trail-group { height: 48px; }
   .header { height: 40px; padding: 0 8px; }
   .game-name { font-size: 12px; }
   .prob-btn { padding: 5px 6px; font-size: 10px; }
