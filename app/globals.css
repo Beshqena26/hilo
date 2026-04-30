@@ -352,7 +352,7 @@ body { display: flex; align-items: center; justify-content: center; }
 }
 .prob-btn {
   flex: 1; display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; border-radius: 8px;
+  padding: 10px 16px; border-radius: 8px; height: 40px;
   border: 1px solid var(--hairline); background: var(--card-bg);
   font-family: inherit; font-size: 13px; font-weight: 600;
   color: var(--text-mid); cursor: pointer; transition: all 0.15s;
