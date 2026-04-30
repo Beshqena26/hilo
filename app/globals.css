@@ -645,7 +645,7 @@ body { display: flex; align-items: center; justify-content: center; }
   .opt-label { font-size: 10px; letter-spacing: 0.5px; }
   .opt-sub { font-size: 9px; }
   .opt-mult { font-size: 11px; padding: 3px 6px; }
-  .opt-icon svg { width: 32px; height: 32px; }
+  .opt-icon svg { width: 40px; height: 40px; }
   .opt-desc { font-size: 8px; max-width: 85px; }
   .deck-wrap { width: 108px; height: 178px; }
   .card-frame { width: 108px; height: 152px; }
@@ -682,7 +682,7 @@ body { display: flex; align-items: center; justify-content: center; }
   .opt-label { font-size: 9px; }
   .opt-sub { display: none; }
   .opt-mult { font-size: 10px; padding: 2px 4px; }
-  .opt-icon svg { width: 32px; height: 32px; }
+  .opt-icon svg { width: 40px; height: 40px; }
   .opt-desc { display: none; }
   .deck-wrap { width: 92px; height: 155px; }
   .card-frame { width: 92px; height: 130px; }
