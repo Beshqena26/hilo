@@ -9,7 +9,7 @@ export function drawCard(): Card {
   return { rank: RANKS[rankIdx], suit: SUITS[suitIdx] };
 }
 
-/** Get numeric value for a rank (1-13, Ace=1, King=13) */
+/** Get numeric value for a rank (2-14, 2=lowest, Ace=14 highest) */
 export function rankValue(rank: Rank): number {
   return RANK_VALUES[rank];
 }
@@ -20,14 +20,14 @@ export function rankValue(rank: Rank): number {
  */
 export function probHigherOrSame(rank: Rank): number {
   const v = rankValue(rank);
-  const higherCount = 13 - v; // ranks strictly above
+  const higherCount = 14 - v; // ranks strictly above (max is 14)
   return (higherCount + 1) / 13; // +1 for same
 }
 
 /** Probability of drawing lower OR same */
 export function probLowerOrSame(rank: Rank): number {
   const v = rankValue(rank);
-  const lowerCount = v - 1; // ranks strictly below
+  const lowerCount = v - 2; // ranks strictly below (min is 2)
   return (lowerCount + 1) / 13; // +1 for same
 }
 
@@ -63,20 +63,20 @@ export function checkGuess(
 /** Description text for higher option */
 export function higherDesc(rank: Rank): string {
   const v = rankValue(rank);
-  if (v === 13) return 'KING OR SAME';
+  if (v === 14) return 'ACE OR SAME';
   const idx = RANKS.indexOf(rank);
   const nextRank = RANKS[idx + 1];
-  if (v === 12) return `${nextRank} BEING THE HIGHEST`;
+  if (v === 13) return `${nextRank} BEING THE HIGHEST`;
   return `${nextRank} OR HIGHER`;
 }
 
 /** Description text for lower option */
 export function lowerDesc(rank: Rank): string {
   const v = rankValue(rank);
-  if (v === 1) return 'ACE OR SAME';
+  if (v === 2) return '2 OR SAME';
   const idx = RANKS.indexOf(rank);
   const prevRank = RANKS[idx - 1];
-  if (v === 2) return `${prevRank} BEING THE LOWEST`;
+  if (v === 3) return `${prevRank} BEING THE LOWEST`;
   return `${prevRank} OR LOWER`;
 }
 

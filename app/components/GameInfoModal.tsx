@@ -41,7 +41,7 @@ export default function GameInfoModal({ open, onClose }: Props) {
         <h3>How to Play</h3>
         <ol>
           <li><strong>Place your bet</strong> — enter the amount you want to wager.</li>
-          <li><strong>A card is dealt</strong> — Ace (low) through King (high).</li>
+          <li><strong>A card is dealt</strong> — 2 (low) through Ace (high).</li>
           <li><strong>Choose Higher or Same / Lower or Same</strong> — riskier guesses pay higher multipliers. Same rank always wins.</li>
           <li><strong style={{ color: '#0ECC68' }}>Correct!</strong> — your multiplier grows. Cash out or continue.</li>
           <li><strong style={{ color: '#ED4163' }}>Wrong!</strong> — you lose your entire bet.</li>
@@ -52,11 +52,11 @@ export default function GameInfoModal({ open, onClose }: Props) {
           <table className="mult-table">
             <tbody>
               <tr><th>Card</th><th>Higher/Same</th><th>Lower/Same</th><th>Chance H</th><th>Chance L</th></tr>
-              <tr><td>Ace (1)</td><td>0.99x</td><td>12.87x</td><td>100%</td><td>7.7%</td></tr>
-              <tr><td>4</td><td>1.28x</td><td>3.21x</td><td>76.9%</td><td>30.8%</td></tr>
-              <tr><td>7</td><td>1.83x</td><td>1.83x</td><td>53.8%</td><td>53.8%</td></tr>
-              <tr><td>10</td><td>3.21x</td><td>1.28x</td><td>30.8%</td><td>76.9%</td></tr>
-              <tr><td>King (13)</td><td>12.87x</td><td>0.99x</td><td>7.7%</td><td>100%</td></tr>
+              <tr><td>2 (lowest)</td><td>0.99x</td><td>12.87x</td><td>100%</td><td>7.7%</td></tr>
+              <tr><td>5</td><td>1.28x</td><td>3.21x</td><td>76.9%</td><td>30.8%</td></tr>
+              <tr><td>8</td><td>1.83x</td><td>1.83x</td><td>53.8%</td><td>53.8%</td></tr>
+              <tr><td>J</td><td>3.21x</td><td>1.28x</td><td>30.8%</td><td>76.9%</td></tr>
+              <tr><td>Ace (highest)</td><td>12.87x</td><td>0.99x</td><td>7.7%</td><td>100%</td></tr>
             </tbody>
           </table>
         </div>
@@ -64,8 +64,8 @@ export default function GameInfoModal({ open, onClose }: Props) {
         <div className="info-box">
           <span className="info-icon">&#x2666;</span>
           <p>
-            Ace is the <strong>lowest</strong> card (1). King is the <strong>highest</strong> (13).
-            Order: A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K.
+            2 is the <strong>lowest</strong> card. Ace is the <strong>highest</strong>.
+            Order: 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K, A.
             Each draw uses an infinite deck — every card has the same probability regardless
             of previous draws.
           </p>
