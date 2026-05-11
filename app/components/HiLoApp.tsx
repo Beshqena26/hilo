@@ -1,60 +1,65 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { AudioEngine } from '../lib/audio';
 import {
   drawCard,
-  higherMultiplier,
-  lowerMultiplier,
-  probHigherOrSame,
-  probLowerOrSame,
-  checkGuess,
   higherDesc,
   lowerDesc,
   fmt,
 } from '../lib/game-logic';
 import {
-  MAX_BET, MIN_BET, MAX_SKIPS, DEFAULT_BALANCE,
-  SUIT_SYMBOLS, type Card,
+  SUIT_SYMBOLS, type Card, type Rank,
 } from '../lib/constants';
 import GameInfoModal from './GameInfoModal';
 import ProvablyFairModal from './ProvablyFairModal';
+import {
+  initDemo,
+  getState,
+  placeBet,
+  actGuess,
+  actSkip,
+  cashout as apiCashout,
+  type RankInfo,
+  type BetResponse,
+} from '../lib/rgs';
 
-type Phase = 'idle' | 'playing' | 'result';
+type Phase = 'connecting' | 'idle' | 'playing' | 'result';
 type Guess = 'higher' | 'lower';
 
 interface HistoryEntry {
   card: Card;
   guess: Guess | 'skip' | 'start';
   correct: boolean;
-  mult?: number; // multiplier for this step
+  mult?: number; // step multiplier
 }
 
 export default function HiLoApp() {
-  const [balance, setBalance] = useState(DEFAULT_BALANCE);
-  const balRef = useRef(DEFAULT_BALANCE);
-  const [betStr, setBetStr] = useState('10.00');
-  const [phase, setPhase] = useState<Phase>('idle');
+  // --- Server-driven state ---
+  const [phase, setPhase] = useState<Phase>('connecting');
+  const [balance, setBalance] = useState(0);
+  const [currency, setCurrency] = useState('USD');
+  const [minBet, setMinBet] = useState(1);
+  const [maxBet, setMaxBet] = useState(100);
+  const [maxSkips, setMaxSkips] = useState(10);
+  const [rankInfo, setRankInfo] = useState<Record<string, RankInfo>>({});
+  const [rtp, setRTP] = useState('0.965');
 
-  const [currentCard, setCurrentCard] = useState<Card | null>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    if (!mounted) {
-      setCurrentCard(drawCard());
-      setMounted(true);
-    }
-  }, [mounted]);
-  const [streak, setStreak] = useState<HistoryEntry[]>([]);
+  const [activeRoundId, setActiveRoundId] = useState<string | null>(null);
+  const [betAmount, setBetAmount] = useState(0);
   const [totalMultiplier, setTotalMultiplier] = useState(1);
   const [skipsUsed, setSkipsUsed] = useState(0);
-  const [betAmount, setBetAmount] = useState(0);
+
+  // --- UI state ---
+  const [betStr, setBetStr] = useState('10.00');
+  const [currentCard, setCurrentCard] = useState<Card | null>(null);
+  const [streak, setStreak] = useState<HistoryEntry[]>([]);
   const [lastResult, setLastResult] = useState<'win' | 'lose' | null>(null);
+  const [lastPayout, setLastPayout] = useState(0);
   const [showCashout, setShowCashout] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [cardAnim, setCardAnim] = useState<'enter' | 'deal' | ''>('');
   const [prevCard, setPrevCard] = useState<Card | null>(null);
-
   const [gameHistory, setGameHistory] = useState<{ won: boolean; payout: number; mult: number }[]>([]);
 
   const [gameInfoOpen, setGameInfoOpen] = useState(false);
@@ -64,55 +69,79 @@ export default function HiLoApp() {
   const [soundOn, setSoundOn] = useState(true);
   const [alert, setAlert] = useState<string | null>(null);
 
+  const showAlertMsg = useCallback((msg: string) => {
+    setAlert(msg);
+    setTimeout(() => setAlert(null), 2500);
+  }, []);
+
+  // --- Boot: init demo session + initial state ---
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await initDemo();
+        const state = await getState();
+        if (cancelled) return;
+
+        setBalance(parseFloat(state.balance));
+        setCurrency(state.currency);
+        setMinBet(parseFloat(state.config.min_bet));
+        setMaxBet(parseFloat(state.config.max_bet));
+        setRTP(state.config.rtp);
+
+        if (state.game_data) {
+          setMaxSkips(state.game_data.max_skips);
+          const map: Record<string, RankInfo> = {};
+          for (const r of state.game_data.rank_info) map[r.rank] = r;
+          setRankInfo(map);
+        }
+
+        // Pre-bet decorative card
+        setCurrentCard(drawCard());
+        setPhase('idle');
+      } catch (e) {
+        if (!cancelled) {
+          showAlertMsg('Failed to connect: ' + (e as Error).message);
+          setPhase('idle');
+          setCurrentCard(drawCard());
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showAlertMsg]);
+
   useEffect(() => {
     const audio = new AudioEngine();
     audio.loadCardSound();
     audioRef.current = audio;
   }, []);
 
-  const updateBal = useCallback((v: number) => { balRef.current = v; setBalance(v); }, []);
-
   const getBet = useCallback((): number => {
     const b = parseFloat(betStr);
-    if (isNaN(b) || b < MIN_BET) return MIN_BET;
-    if (b > MAX_BET) return MAX_BET;
+    if (isNaN(b) || b < minBet) return minBet;
+    if (b > maxBet) return maxBet;
     return Math.floor(b * 100) / 100;
-  }, [betStr]);
+  }, [betStr, minBet, maxBet]);
 
-  const showAlertMsg = useCallback((msg: string) => {
-    setAlert(msg);
-    setTimeout(() => setAlert(null), 2500);
-  }, []);
-
-  const profit = Math.floor(betAmount * totalMultiplier * 100) / 100;
-
-  const hMult = currentCard ? higherMultiplier(currentCard.rank) : 0;
-  const lMult = currentCard ? lowerMultiplier(currentCard.rank) : 0;
-  const hProb = currentCard ? probHigherOrSame(currentCard.rank) : 0;
-  const lProb = currentCard ? probLowerOrSame(currentCard.rank) : 0;
-  const hDesc = currentCard ? higherDesc(currentCard.rank) : '';
-  const lDesc = currentCard ? lowerDesc(currentCard.rank) : '';
+  // Step multipliers & probabilities for the current card.
+  const ri = currentCard ? rankInfo[currentCard.rank] : undefined;
+  const hMult = ri ? parseFloat(ri.higher_multiplier) : 0;
+  const lMult = ri ? parseFloat(ri.lower_multiplier) : 0;
+  const hProb = ri ? parseFloat(ri.higher_probability) : 0;
+  const lProb = ri ? parseFloat(ri.lower_probability) : 0;
+  const hDesc = currentCard ? higherDesc(currentCard.rank as Rank) : '';
+  const lDesc = currentCard ? lowerDesc(currentCard.rank as Rank) : '';
 
   const isRed = (suit: Card['suit']) => suit === 'hearts' || suit === 'diamonds';
 
-  const startGame = useCallback(() => {
-    const bet = getBet();
-    if (bet > balRef.current) { showAlertMsg('Insufficient balance'); return; }
-    audioRef.current?.sndBet();
-    updateBal(balRef.current - bet);
-    setBetAmount(bet);
-    const card = currentCard || drawCard();
-    // Only set card if it changed (avoids re-render flash)
-    if (card !== currentCard) setCurrentCard(card);
-    setStreak([{ card, guess: 'start', correct: true }]);
-    setTotalMultiplier(1);
-    setSkipsUsed(0);
-    setLastResult(null);
-    setShowCashout(false);
-    setIsAnimating(false);
-    setPrevCard(null);
-    setPhase('playing');
-  }, [getBet, showAlertMsg, updateBal, currentCard]);
+  const profit = useMemo(() => Math.floor(betAmount * totalMultiplier * 100) / 100, [betAmount, totalMultiplier]);
+
+  const cardFromResponse = (c: unknown): Card | null => {
+    if (!c || typeof c !== 'object') return null;
+    const obj = c as { rank?: string; suit?: string };
+    if (!obj.rank || !obj.suit) return null;
+    return { rank: obj.rank as Card['rank'], suit: obj.suit as Card['suit'] };
+  };
 
   const transitionCard = useCallback((nextCard: Card, cb: () => void) => {
     setIsAnimating(true);
@@ -128,40 +157,101 @@ export default function HiLoApp() {
     }, 650);
   }, [currentCard]);
 
-  const makeGuess = useCallback((guess: Guess) => {
-    if (phase !== 'playing' || !currentCard || isAnimating) return;
-    const nextCard = drawCard();
-    const correct = checkGuess(currentCard.rank, nextCard.rank, guess);
-    const mult = guess === 'higher'
-      ? higherMultiplier(currentCard.rank)
-      : lowerMultiplier(currentCard.rank);
+  // --- Actions backed by the RGS ---
 
-    transitionCard(nextCard, () => {
-      if (correct) {
-        const newTotal = Math.floor(totalMultiplier * mult * 100) / 100;
-        setTotalMultiplier(newTotal);
-        setStreak(prev => [...prev, { card: nextCard, guess, correct: true, mult }]);
-        setShowCashout(true);
-        newTotal >= 10 ? audioRef.current?.sndBigWin() : audioRef.current?.sndWin();
-      } else {
-        setStreak(prev => [...prev, { card: nextCard, guess, correct: false, mult: 0 }]);
-        setLastResult('lose');
-        setPhase('result');
-        audioRef.current?.sndLose();
-        setGameHistory(prev => [{ won: false, payout: 0, mult: totalMultiplier }, ...prev].slice(0, 50));
+  const startGame = useCallback(async () => {
+    if (phase === 'connecting' || isAnimating) return;
+    const bet = getBet();
+    if (bet > balance) { showAlertMsg('Insufficient balance'); return; }
+
+    try {
+      audioRef.current?.sndBet();
+      const r = await placeBet(bet);
+      const gd = r.game_data as { current_card?: unknown; max_skips?: number };
+      const card = cardFromResponse(gd.current_card);
+      if (!card) {
+        showAlertMsg('Server returned invalid card');
+        return;
       }
-    });
-  }, [phase, currentCard, totalMultiplier, isAnimating, transitionCard]);
+      setBalance(parseFloat(r.balance));
+      setActiveRoundId(r.round_id);
+      setBetAmount(bet);
+      setTotalMultiplier(1);
+      setSkipsUsed(0);
+      if (typeof gd.max_skips === 'number') setMaxSkips(gd.max_skips);
+      setCurrentCard(card);
+      setStreak([{ card, guess: 'start', correct: true }]);
+      setLastResult(null);
+      setShowCashout(false);
+      setPrevCard(null);
+      setPhase('playing');
+    } catch (e) {
+      showAlertMsg((e as Error).message || 'Bet failed');
+    }
+  }, [phase, isAnimating, getBet, balance, showAlertMsg]);
 
-  const cashout = useCallback(() => {
-    if (phase !== 'playing' || !showCashout || isAnimating) return;
-    const payout = Math.floor(betAmount * totalMultiplier * 100) / 100;
-    updateBal(balRef.current + payout);
-    setLastResult('win');
+  const applyTerminal = useCallback((r: BetResponse, win: boolean) => {
+    setBalance(parseFloat(r.balance));
+    const payout = parseFloat(r.total_payout);
+    setLastPayout(payout);
+    setLastResult(win ? 'win' : 'lose');
+    setActiveRoundId(null);
     setPhase('result');
-    audioRef.current?.sndCashout();
-    setGameHistory(prev => [{ won: true, payout, mult: totalMultiplier }, ...prev].slice(0, 50));
-  }, [phase, betAmount, totalMultiplier, showCashout, updateBal, isAnimating]);
+    if (win) audioRef.current?.sndCashout(); else audioRef.current?.sndLose();
+    const mult = totalMultiplier;
+    setGameHistory(prev => [{ won: win, payout, mult }, ...prev].slice(0, 50));
+  }, [totalMultiplier]);
+
+  const makeGuess = useCallback(async (guess: Guess) => {
+    if (phase !== 'playing' || !currentCard || isAnimating || !activeRoundId) return;
+    try {
+      const r = await actGuess(activeRoundId, guess);
+      const gd = r.game_data as {
+        new_card?: unknown;
+        correct?: boolean;
+        step_multiplier?: string;
+        total_multiplier?: string;
+        current_payout?: string;
+      };
+      const newCard = cardFromResponse(gd.new_card);
+      if (!newCard) {
+        showAlertMsg('Server returned invalid card');
+        return;
+      }
+      const correct = gd.correct === true;
+      const stepMult = parseFloat(gd.step_multiplier ?? '0');
+      const newTotal = parseFloat(gd.total_multiplier ?? '0');
+
+      transitionCard(newCard, () => {
+        setStreak(prev => [...prev, { card: newCard, guess, correct, mult: stepMult }]);
+        if (correct && !r.finished) {
+          setTotalMultiplier(newTotal);
+          setShowCashout(true);
+          if (newTotal >= 10) audioRef.current?.sndBigWin();
+          else audioRef.current?.sndWin();
+        } else if (correct && r.finished) {
+          // Auto-cashout (max payout cap)
+          setTotalMultiplier(newTotal);
+          applyTerminal(r, true);
+        } else {
+          // Bust
+          applyTerminal(r, false);
+        }
+      });
+    } catch (e) {
+      showAlertMsg((e as Error).message || 'Guess failed');
+    }
+  }, [phase, currentCard, isAnimating, activeRoundId, transitionCard, showAlertMsg, applyTerminal]);
+
+  const cashout = useCallback(async () => {
+    if (phase !== 'playing' || !showCashout || isAnimating || !activeRoundId) return;
+    try {
+      const r = await apiCashout(activeRoundId);
+      applyTerminal(r, true);
+    } catch (e) {
+      showAlertMsg((e as Error).message || 'Cashout failed');
+    }
+  }, [phase, showCashout, isAnimating, activeRoundId, applyTerminal, showAlertMsg]);
 
   const newGame = useCallback(() => {
     setPhase('idle'); setStreak([]);
@@ -169,18 +259,14 @@ export default function HiLoApp() {
     setPrevCard(null); setCardAnim(''); setSkipsUsed(0);
   }, []);
 
-  const skipCard = useCallback(() => {
+  const skipCard = useCallback(async () => {
     if (isAnimating) return;
-    if (skipsUsed >= MAX_SKIPS) { showAlertMsg(`Max ${MAX_SKIPS} skips per round`); return; }
-    const nextCard = drawCard();
-    audioRef.current?.sndSkip();
 
-    if (phase === 'result') {
-      newGame();
-    }
-
+    // Pre-bet / result phase: purely cosmetic shuffle, no server call.
     if (phase !== 'playing') {
-      // Same slide-out animation even when not playing
+      if (phase === 'result') newGame();
+      const nextCard = drawCard();
+      audioRef.current?.sndSkip();
       setIsAnimating(true);
       setPrevCard(currentCard);
       setCurrentCard(nextCard);
@@ -189,15 +275,29 @@ export default function HiLoApp() {
         setCardAnim('');
         setPrevCard(null);
         setIsAnimating(false);
-        setSkipsUsed(prev => prev + 1);
       }, 650);
       return;
     }
-    transitionCard(nextCard, () => {
-      setStreak(prev => [...prev, { card: nextCard, guess: 'skip', correct: true }]);
-      setSkipsUsed(prev => prev + 1);
-    });
-  }, [phase, currentCard, skipsUsed, showAlertMsg, isAnimating, transitionCard, newGame]);
+
+    if (skipsUsed >= maxSkips) { showAlertMsg(`Max ${maxSkips} skips per round`); return; }
+    if (!activeRoundId) return;
+    try {
+      const r = await actSkip(activeRoundId);
+      const gd = r.game_data as { new_card?: unknown; skips_used?: number };
+      const newCard = cardFromResponse(gd.new_card);
+      if (!newCard) {
+        showAlertMsg('Server returned invalid card');
+        return;
+      }
+      audioRef.current?.sndSkip();
+      transitionCard(newCard, () => {
+        setStreak(prev => [...prev, { card: newCard, guess: 'skip', correct: true }]);
+        setSkipsUsed(gd.skips_used ?? skipsUsed + 1);
+      });
+    } catch (e) {
+      showAlertMsg((e as Error).message || 'Skip failed');
+    }
+  }, [phase, currentCard, skipsUsed, maxSkips, isAnimating, activeRoundId, transitionCard, newGame, showAlertMsg]);
 
   const handlePrimary = () => {
     if (phase === 'idle' || phase === 'result') {
@@ -208,10 +308,13 @@ export default function HiLoApp() {
     }
   };
 
-  const primaryLabel = phase === 'playing' && showCashout
-    ? `CASH OUT ${fmt(profit)}`
-    : phase === 'playing' ? 'PLAYING...' : 'BET';
-  const primaryDisabled = phase === 'playing' && (!showCashout || isAnimating);
+  const primaryLabel =
+    phase === 'connecting' ? 'CONNECTING…' :
+    phase === 'playing' && showCashout ? `CASH OUT ${fmt(profit)}` :
+    phase === 'playing' ? 'PLAYING...' : 'BET';
+  const primaryDisabled =
+    phase === 'connecting' ||
+    (phase === 'playing' && (!showCashout || isAnimating));
 
   return (
     <>
@@ -220,13 +323,13 @@ export default function HiLoApp() {
         <div className="header">
           <div className="header-left">
             <div className="game-name">
-              <span className="ico">{'\u2660'}</span>
+              <span className="ico">{'♠'}</span>
               <span>HiLo</span>
             </div>
           </div>
           <div className="header-balance">
-            <span className="header-bal-icon">{'\uD83D\uDCB0'}</span>
-            <span className="header-bal-value">{fmt(balance)}</span>
+            <span className="header-bal-icon">{'💰'}</span>
+            <span className="header-bal-value">{fmt(balance)} {currency}</span>
           </div>
           <div className="header-right">
             <div className="fairplay" onClick={() => setPfModalOpen(true)}>Fair Play</div>
@@ -245,16 +348,10 @@ export default function HiLoApp() {
                 <div className={`trail-tag ${entry.guess} ${!entry.correct ? 'bust' : ''}`}>
                   {entry.guess === 'start' && 'Start'}
                   {entry.guess === 'skip' && 'Skip'}
-                  {entry.guess === 'higher' && !entry.correct && (
+                  {entry.guess === 'higher' && (
                     <><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 19V5M5 12l7-7 7 7"/></svg>{entry.mult?.toFixed(2)}x</>
                   )}
-                  {entry.guess === 'higher' && entry.correct && (
-                    <><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 19V5M5 12l7-7 7 7"/></svg>{entry.mult?.toFixed(2)}x</>
-                  )}
-                  {entry.guess === 'lower' && !entry.correct && (
-                    <><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>{entry.mult?.toFixed(2)}x</>
-                  )}
-                  {entry.guess === 'lower' && entry.correct && (
+                  {entry.guess === 'lower' && (
                     <><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>{entry.mult?.toFixed(2)}x</>
                   )}
                 </div>
@@ -287,10 +384,10 @@ export default function HiLoApp() {
               </div>
               <span className="opt-label">LOWER</span>
               <span className="opt-sub">or Same</span>
-              <span className="opt-mult">{currentCard ? `x${lMult.toFixed(2)}` : '\u2014'}</span>
+              <span className="opt-mult">{currentCard ? `x${lMult.toFixed(2)}` : '—'}</span>
             </button>
             <span className="opt-desc">
-              {currentCard ? lDesc : '\u00A0'}
+              {currentCard ? lDesc : ' '}
             </span>
           </div>
 
@@ -330,14 +427,14 @@ export default function HiLoApp() {
               </div>
 
               {/* Skip icon button */}
-              <button className="skip-btn-icon" onClick={skipCard} disabled={isAnimating || skipsUsed >= MAX_SKIPS} title="Skip Card">
+              <button className="skip-btn-icon" onClick={skipCard} disabled={isAnimating || (phase === 'playing' && skipsUsed >= maxSkips)} title="Skip Card">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M13 5l7 7-7 7M6 5l7 7-7 7"/></svg>
               </button>
             </div>
 
-            <button className="skip-btn-text" onClick={skipCard} disabled={isAnimating || skipsUsed >= MAX_SKIPS}>
+            <button className="skip-btn-text" onClick={skipCard} disabled={isAnimating || (phase === 'playing' && skipsUsed >= maxSkips)}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M13 5l7 7-7 7M6 5l7 7-7 7"/></svg>
-              Skip Card ({MAX_SKIPS - skipsUsed})
+              Skip Card {phase === 'playing' ? `(${maxSkips - skipsUsed})` : ''}
             </button>
           </div>
 
@@ -349,10 +446,10 @@ export default function HiLoApp() {
               </div>
               <span className="opt-label">HIGHER</span>
               <span className="opt-sub">or Same</span>
-              <span className="opt-mult">{currentCard ? `x${hMult.toFixed(2)}` : '\u2014'}</span>
+              <span className="opt-mult">{currentCard ? `x${hMult.toFixed(2)}` : '—'}</span>
             </button>
             <span className="opt-desc">
-              {currentCard ? hDesc : '\u00A0'}
+              {currentCard ? hDesc : ' '}
             </span>
           </div>
 
@@ -365,7 +462,7 @@ export default function HiLoApp() {
 
           {/* Result badge - absolute to board */}
           <div className={`result-badge ${phase === 'result' && lastResult ? lastResult : 'hidden'}`}>
-            {lastResult === 'win' ? `CASHED OUT ${fmt(profit)}` : lastResult === 'lose' ? 'BUST!' : '\u00A0'}
+            {lastResult === 'win' ? `CASHED OUT ${fmt(lastPayout)}` : lastResult === 'lose' ? 'BUST!' : ' '}
           </div>
         </main>
 
@@ -377,13 +474,13 @@ export default function HiLoApp() {
               <span className="prob-text">Lower / Same</span>
               <span className="prob-pct">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-                {currentCard ? `${(lProb * 100).toFixed(2)}%` : '\u2014'}
+                {currentCard ? `${(lProb * 100).toFixed(2)}%` : '—'}
               </span>
             </button>
             <button className="prob-btn prob-higher" onClick={() => makeGuess('higher')} disabled={phase !== 'playing' || isAnimating}>
               <span className="prob-pct">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                {currentCard ? `${(hProb * 100).toFixed(2)}%` : '\u2014'}
+                {currentCard ? `${(hProb * 100).toFixed(2)}%` : '—'}
               </span>
               <span className="prob-text">Higher / Same</span>
             </button>
@@ -397,15 +494,15 @@ export default function HiLoApp() {
                 type="number"
                 value={betStr}
                 onChange={e => setBetStr(e.target.value)}
-                disabled={phase === 'playing'}
-                min={MIN_BET}
-                max={MAX_BET}
+                disabled={phase === 'playing' || phase === 'connecting'}
+                min={minBet}
+                max={maxBet}
                 step="0.01"
               />
               <div className="chips">
-                <button className="chip" onClick={() => setBetStr((getBet() / 2).toFixed(2))} disabled={phase === 'playing'}>&frac12;</button>
-                <button className="chip" onClick={() => setBetStr(Math.min(getBet() * 2, MAX_BET).toFixed(2))} disabled={phase === 'playing'}>2x</button>
-                <button className="chip" onClick={() => setBetStr(Math.min(MAX_BET, balRef.current).toFixed(2))} disabled={phase === 'playing'}>Max</button>
+                <button className="chip" onClick={() => setBetStr((getBet() / 2).toFixed(2))} disabled={phase === 'playing' || phase === 'connecting'}>&frac12;</button>
+                <button className="chip" onClick={() => setBetStr(Math.min(getBet() * 2, maxBet).toFixed(2))} disabled={phase === 'playing' || phase === 'connecting'}>2x</button>
+                <button className="chip" onClick={() => setBetStr(Math.min(maxBet, balance).toFixed(2))} disabled={phase === 'playing' || phase === 'connecting'}>Max</button>
               </div>
             </div>
 
@@ -451,7 +548,7 @@ export default function HiLoApp() {
               </svg>
             </div>
           </div>
-          <div className="bottom-logo">MYBC</div>
+          <div className="bottom-logo">MYBC · RTP {(parseFloat(rtp) * 100).toFixed(1)}% · {gameHistory.length > 0 ? `${gameHistory.filter(h => h.won).length}/${gameHistory.length} won` : ''}</div>
         </div>
       </div>
 
